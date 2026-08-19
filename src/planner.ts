@@ -97,9 +97,12 @@ Prefer four to eight tasks. Fewer if the goal is small — do not pad. If the go
     'json',
     '--json-schema',
     SCHEMA,
-    prompt,
   ], {
     cwd: projectRoot(),
+    // Prompt on stdin, never argv — Linux caps one argument at 128 KB and a
+    // goal carrying repository context blows straight through it. See the note
+    // in tutor.ts's runClaude for how CI surfaced this.
+    input: prompt,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     timeout: 600_000,
@@ -257,9 +260,12 @@ Prefer the smallest team that can actually do the work in parallel without idlin
     'json',
     '--json-schema',
     PROPOSE_SCHEMA,
-    prompt,
   ], {
     cwd: projectRoot(),
+    // Prompt on stdin, never argv — Linux caps one argument at 128 KB and a
+    // goal carrying repository context blows straight through it. See the note
+    // in tutor.ts's runClaude for how CI surfaced this.
+    input: prompt,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     timeout: 120_000,

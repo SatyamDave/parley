@@ -18,16 +18,50 @@
 // proposal a human confirms, after which it is pinned. Grouping is cheap for a
 // human to verify (look at five buckets of files, say yes or no) in a way that
 // an invariant claim is not, which is why it is a defensible exception.
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
 
 // Async on purpose. The synchronous version made concurrency impossible:
 // execFileSync blocks Node's entire event loop, so narrating regions "in
 // parallel" still ran strictly one at a time and a 24-file repo took over
 // twenty minutes.
-const exec = promisify(execFile)
+//
+// `spawn` rather than execFile because the prompt has to go in on stdin, and
+// execFile offers no way to write it — see runClaude for why argv is not an
+// option here.
+
+/** Run the model with the prompt on stdin, resolving its raw stdout. Rejects
+ *  only on a spawn-level failure; a non-zero exit resolves with whatever was
+ *  written, so the caller's own parse guard decides what to do. */
+function runWithStdin(file: string, args: string[], prompt: string, timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(file, args, {
+      env: { ...process.env, PARLEY_AGENT: '', PARLEY_DIR: '' },
+    })
+    let out = ''
+    let settled = false
+    const done = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn()
+    }
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      done(() => reject(new Error('timeout')))
+    }, timeoutMs)
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (d) => {
+      out += d
+    })
+    child.on('error', (e) => done(() => reject(e)))
+    child.on('close', () => done(() => resolve(out)))
+    // EPIPE if the child died before reading — already covered by 'error'.
+    child.stdin.on('error', () => {})
+    child.stdin.end(prompt)
+  })
+}
 import type { Skeleton } from './skeleton.ts'
 import type { Decomposition, Region } from './regions.ts'
 
@@ -89,18 +123,15 @@ async function runClaude(prompt: string, schema: string, model?: string): Promis
     'json',
     '--json-schema',
     schema,
-    prompt,
   ]
   let raw: string
   try {
-    const { stdout } = await exec(process.env.PARLEY_CLAUDE ?? 'claude', args, {
-      encoding: 'utf8',
-      maxBuffer: 32 * 1024 * 1024,
-      timeout: 300_000,
-      // The mapper reads; it must never be able to edit the repo it describes.
-      env: { ...process.env, PARLEY_AGENT: '', PARLEY_DIR: '' },
-    })
-    raw = stdout
+    // The prompt goes on stdin, never in argv. Linux caps a single argument at
+    // 128 KB and a region's narration prompt is MAX_FILE_CHARS (24 KB) per
+    // file — so any region of six or more files would die with E2BIG on Linux
+    // while working fine on macOS. CI caught the same bug in tutor.ts by
+    // running both platforms; this is the same fix applied before it could bite.
+    raw = await runWithStdin(process.env.PARLEY_CLAUDE ?? 'claude', args, prompt, 300_000)
   } catch {
     return null
   }

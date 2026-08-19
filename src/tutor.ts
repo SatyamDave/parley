@@ -131,9 +131,16 @@ function runClaude(prompt: string, schema?: string, modelOverride?: string): str
   const model = modelOverride ?? process.env.PARLEY_TUTOR_MODEL ?? 'haiku'
   const args = ['-p', '--model', model, '--output-format', 'json']
   if (schema) args.push('--json-schema', schema)
-  args.push(prompt)
+  // The prompt goes on stdin, NOT in argv. Linux caps a single argument at
+  // MAX_ARG_STRLEN (32 pages = 128 KB); macOS is far more generous. A review
+  // prompt carries up to MAX_REVIEW_DIFF (180 KB) of diff, so passing it as an
+  // argument works on a Mac and dies with E2BIG on every Linux box — which is
+  // exactly how CI caught this: green on macos-latest, `spawnSync ... E2BIG` on
+  // ubuntu-latest. `claude -p` reads the prompt from stdin when none is given
+  // in argv, so this removes the ceiling entirely rather than just raising it.
   return execFileSync(process.env.PARLEY_CLAUDE ?? 'claude', args, {
     cwd: projectRoot(),
+    input: prompt,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     timeout: 300_000,

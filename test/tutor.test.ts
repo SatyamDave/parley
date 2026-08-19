@@ -33,9 +33,20 @@ const fixturesDir = mkdtempSync(join(tmpdir(), 'parley-tutor-fixtures-'))
 const fakeClaude = join(fixturesDir, 'fake-claude.mjs')
 writeFileSync(
   fakeClaude,
+  // Reads the prompt from STDIN, mirroring how the real \`claude -p\` is now
+  // invoked. It used to read \`process.argv[last]\`, which stopped working when
+  // the prompt moved out of argv — a change forced by Linux's 128 KB
+  // per-argument ceiling (a review prompt carries up to 180 KB of diff, so
+  // argv worked on macOS and died with E2BIG on Linux). Reading stdin here
+  // keeps the fixture honest about the real call shape.
   `#!/usr/bin/env node
-import { writeFileSync } from 'node:fs'
-const prompt = process.argv[process.argv.length - 1]
+import { writeFileSync, readFileSync } from 'node:fs'
+let prompt = ''
+try {
+  prompt = readFileSync(0, 'utf8')
+} catch {
+  /* no stdin attached — leave it empty rather than crashing the fixture */
+}
 if (process.env.FAKE_CLAUDE_CAPTURE) writeFileSync(process.env.FAKE_CLAUDE_CAPTURE, prompt)
 if (process.env.FAKE_CLAUDE_EXIT) process.exit(Number(process.env.FAKE_CLAUDE_EXIT))
 process.stdout.write(process.env.FAKE_CLAUDE_RESPONSE ?? JSON.stringify({ result: '' }))

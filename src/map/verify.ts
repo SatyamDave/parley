@@ -27,13 +27,41 @@
 // content. Grouping by cited file means each file's content is sent once,
 // carrying every claim it needs to answer for. Same verdicts, a fraction of the
 // tokens.
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
 import type { Claim } from './narrate.ts'
 
-const exec = promisify(execFile)
+/** Run the model with the prompt on stdin, resolving its raw stdout.
+ *  `spawn` rather than execFile because execFile gives no way to write stdin,
+ *  and the prompt cannot go in argv — see judgeBatch for why. */
+function runWithStdin(file: string, args: string[], prompt: string, timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(file, args, {
+      env: { ...process.env, PARLEY_AGENT: '', PARLEY_DIR: '' },
+    })
+    let out = ''
+    let settled = false
+    const done = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn()
+    }
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      done(() => reject(new Error('timeout')))
+    }, timeoutMs)
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (d) => {
+      out += d
+    })
+    child.on('error', (e) => done(() => reject(e)))
+    child.on('close', () => done(() => resolve(out)))
+    child.stdin.on('error', () => {})
+    child.stdin.end(prompt)
+  })
+}
 const MAX_EVIDENCE_CHARS = 30_000
 // Cap per call so the response schema stays small enough for the model to fill
 // in reliably, and one call verifies a manageable claim set even if a single
@@ -103,7 +131,7 @@ Most important: **absence of evidence is never a contradiction.** If you cannot 
 Return one verdict per claim, numbered to match.`
 
   try {
-    const { stdout } = await exec(
+    const stdout = await runWithStdin(
       process.env.PARLEY_CLAUDE ?? 'claude',
       [
         '-p',
@@ -124,9 +152,14 @@ Return one verdict per claim, numbered to match.`
         'json',
         '--json-schema',
         SCHEMA,
-        prompt,
       ],
-      { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 180_000, env: { ...process.env, PARLEY_AGENT: '', PARLEY_DIR: '' } },
+      // Prompt on stdin, not argv. A batch's evidence is MAX_EVIDENCE_CHARS
+      // (30 KB) per cited file, so a claim citing several files sails past
+      // Linux's 128 KB per-argument ceiling and fails with E2BIG — silently
+      // turning every verdict into 'unsupported' via the catch below, which
+      // would look like a cautious judge rather than a broken one.
+      prompt,
+      180_000,
     )
     const outer = JSON.parse(stdout) as { result?: unknown }
     const r = outer.result ?? outer

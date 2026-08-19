@@ -1,0 +1,23 @@
+# Dependencies — 85MB of prebuilt native binaries, never committed.
+node_modules/
+
+# Per-machine Claude Code permission grants and lockfiles. `settings.local.json`
+# is local by convention; a shared `settings.json` would be committed.
+.claude/settings.local.json
+.claude/*.lock
+
+# parley's board and generated maps live outside the repo, in
+# ~/.parley/<project>-<hash>/ — see stateDir() in src/store.ts. Nothing
+# generated should ever land here, but guard against a stray run anyway.
+*.db
+*.db-wal
+*.db-shm
+map.json
+corrections.json
+
+# Scratch output from the A/B harness in scripts/.
+*.log
+
+# OS noise
+.DS_Store
+Thumbs.db

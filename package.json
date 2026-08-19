@@ -1,0 +1,42 @@
+{
+  "name": "parley",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Multi-terminal Claude Code orchestration with a shared board and a tutor that explains what just happened",
+  "bin": {
+    "parley": "./bin/parley.mjs"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "postinstall": "node scripts/fix-pty.mjs",
+    "start": "node src/cli.ts up",
+    "check": "node --experimental-strip-types --check src/cli.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test:watch": "node --experimental-strip-types --test --watch test/*.test.ts"
+  },
+  "dependencies": {
+    "@xterm/headless": "^5.5.0",
+    "ink": "^6.0.0",
+    "node-pty": "^1.1.0",
+    "react": "^19.0.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SatyamDave/parley.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SatyamDave/parley/issues"
+  },
+  "homepage": "https://github.com/SatyamDave/parley#readme",
+  "keywords": [
+    "claude-code",
+    "ai-agents",
+    "orchestration",
+    "code-comprehension",
+    "architecture-map",
+    "multi-agent"
+  ]
+}

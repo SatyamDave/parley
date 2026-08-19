@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # Both platforms on purpose. macOS and Windows default to a
+    # case-INsensitive filesystem, and one real bug here was an import
+    # resolving to a differently-cased file that does not exist — a test for
+    # that only has teeth on a case-insensitive runner, so ubuntu alone would
+    # silently stop guarding it.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The whole codebase runs TypeScript directly via
+          # --experimental-strip-types. There is no build step, so the Node
+          # version is the only toolchain that matters.
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Syntax-check every source file
+        run: |
+          for f in src/*.ts src/map/*.ts; do
+            node --experimental-strip-types --check "$f"
+          done
+
+      - run: npm test
